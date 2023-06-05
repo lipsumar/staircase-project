@@ -155,7 +155,7 @@ def controller_thread_fn():
  
     def on_detect(pin):
         led_id = random.randint(1,50)
-        lightup_segment_from_center(led_id, 6, 120)
+        ripple(led_id, 6, 120)
         
     GPIO.add_event_detect(SENSOR_PIN , GPIO.FALLING, callback=on_detect)
      
