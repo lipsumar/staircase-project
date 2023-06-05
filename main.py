@@ -46,7 +46,9 @@ def transition_pixel(idx, target):
 
 def lightup_segment(start, end, target):
     global strip_model
+    print('segment', start, end, target)
     for i in range(start, end):
+        print('trans', i)
         transition_pixel(i, target)
 
 def lightup_segment_from_center(center, length, target):
@@ -140,7 +142,7 @@ def controller_thread_fn():
  
     def on_detect(pin):
         led_id = random.randint(1,50)
-        lightup_segment_from_center(led_id, 3, 120)
+        lightup_segment_from_center(led_id, 6, 120)
         
         
     GPIO.add_event_detect(SENSOR_PIN , GPIO.FALLING, callback=on_detect)
