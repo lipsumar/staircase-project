@@ -1,10 +1,14 @@
 from rpi_ws281x import PixelStrip, Color
+import RPi.GPIO as GPIO
 import time
 import threading
 import random 
 import pytweening
  
 
+SENSOR_PIN = 23 
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(SENSOR_PIN, GPIO.IN)
  
 #### ledstrip config
 LED_COUNT = 50        # Number of LED pixels.
@@ -77,19 +81,7 @@ strip_model = [{'actual':-1, 'target': 0, 'transition': None} for _ in range(str
 #     }
 # }
  
-# This thread is responsible for reading the sensor
-# and store it in sensor_dist
-def sensor_thread_fn():
-    global sensor_dist
-    avg_filter = MovingAverageFilter(window_size=10, first_value=200)
-    while True:
-        dist = distance()
-        if dist > 200:
-            dist = 200
-        dist_smooth = avg_filter.get_smoothed_value()
-        avg_filter.add_value(dist)
-        sensor_dist = dist_smooth
-        time.sleep(0.1)
+
  
  
 def debug_thread_fn():
@@ -151,18 +143,28 @@ def strip_thread_fn():
  
 def controller_thread_fn():
     global strip_model, sensor_dist
+    
+    
  
+    def on_detect(pin):
+        led_id = random.randint(1,50)
+        transition_pixel(led_id, 120)
+        
+        
+    GPIO.add_event_detect(SENSOR_PIN , GPIO.FALLING, callback=on_detect)
+        
+         
     blackout()
     #transition_pixel(3, 255)
     while True:
-        for i, pix in enumerate(strip_model):
-            transition_pixel(i, 120)
-            time.sleep(0.02)
-            # transition_pixel(i-1, 120)
-            # transition_pixel(i+1, 120)
-            # time.sleep(1)
-        time.sleep(2)
-        blackout()
+        #for i, pix in enumerate(strip_model):
+        #    transition_pixel(i, 120)
+        #    time.sleep(0.02)
+        #    # transition_pixel(i-1, 120)
+        #    # transition_pixel(i+1, 120)
+        #    # time.sleep(1)
+        #time.sleep(2)
+        #blackout()
         time.sleep(1)
  
  
@@ -175,4 +177,11 @@ if __name__ == '__main__':
     #debug_thread.start()
     strip_thread.start()
     controller_thread.start()
+    
+    try:
+        while True:
+            time.sleep(10)
+    except KeyboardInterrupt:
+        blackout()
+        GPIO.cleanup()
  
