@@ -1,21 +1,10 @@
-import RPi.GPIO as GPIO
 from rpi_ws281x import PixelStrip, Color
-from MovingAverageFilter import MovingAverageFilter
 import time
 import threading
 import random 
 import pytweening
  
-#### RPi.GPIO setup (HC-SR04)
-#GPIO Mode (BOARD / BCM)
-GPIO.setmode(GPIO.BCM)
-#set GPIO Pins
-GPIO_TRIGGER = 23
-GPIO_ECHO = 24
-#set GPIO direction (IN / OUT)
-GPIO.setup(GPIO_TRIGGER, GPIO.OUT)
-GPIO.setup(GPIO_ECHO, GPIO.IN)
- 
+
  
 #### ledstrip config
 LED_COUNT = 50        # Number of LED pixels.
@@ -29,34 +18,6 @@ LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
  
  
  
- 
-def distance():
-    # set Trigger to HIGH
-    GPIO.output(GPIO_TRIGGER, True)
- 
-    # set Trigger after 0.01ms to LOW
-    time.sleep(0.00001)
-    GPIO.output(GPIO_TRIGGER, False)
- 
-    StartTime = time.time()
-    StopTime = time.time()
- 
-    # save StartTime
-    while GPIO.input(GPIO_ECHO) == 0:
-        StartTime = time.time()
- 
-    # save time of arrival
-    while GPIO.input(GPIO_ECHO) == 1:
-        StopTime = time.time()
- 
-    # time difference between start and arrival
-    TimeElapsed = StopTime - StartTime
-    # multiply with the sonic speed (34300 cm/s)
-    # and divide by 2, because there and back
-    distance = (TimeElapsed * 34300) / 2
- 
-    return distance
- 
 def blackout():
     global strip_model
     for i, _ in enumerate(strip_model):
@@ -67,17 +28,7 @@ def all_color(strip, color):
     for i in range(strip.numPixels()):
         strip.setPixelColor(i, color)
     strip.show()
- 
-def translate(value, leftMin, leftMax, rightMin, rightMax):
-    # Figure out how 'wide' each range is
-    leftSpan = leftMax - leftMin
-    rightSpan = rightMax - rightMin
- 
-    # Convert the left range into a 0-1 range (float)
-    valueScaled = float(value - leftMin) / float(leftSpan)
- 
-    # Convert the 0-1 range into a value in the right range.
-    return rightMin + (valueScaled * rightSpan)
+
  
 def transition_pixel_old(idx, val):
     global strip_model
@@ -102,7 +53,7 @@ def transition_pixel(idx, target):
     global strip_model
     strip_model[idx]['target'] = target
     strip_model[idx]['transition'] = {
-        'duration': 0.1,
+        'duration': 0.5,
     }
 
  
@@ -164,7 +115,8 @@ def strip_thread_fn():
                 transition = pix['transition']
 
                 # transition is brand new, initialize it
-                if transition['start_time'] is None:
+                if 'start_time' not in transition:
+                    transition['duration'] = transition['duration'] if transition['duration'] else 1.0
                     transition['start_time'] = now
                     transition['end_time'] = transition['start_time'] + transition['duration']
                     transition['start_brightness'] = pix['actual']
@@ -173,17 +125,21 @@ def strip_thread_fn():
                 
                 # transition is ongoing
                 if transition['start_time'] is not None:
-                    elapsed_time = now - transition['start_time']
-                    progress = elapsed_time / transition['duration']
-                    brightness = pytweening.easeInOutSine(progress) * (transition['end_brightness'] - transition['start_brightness']) + transition['start_brightness']
-                    strip.setPixelColor(i, Color(int(brightness), int(brightness), int(brightness)))
-                    strip_model[i]['actual'] = int(brightness)
-
                     # transition is over
                     if now > transition['end_time']:
                         strip_model[i]['transition'] = None
-                        strip.setPixelColor(i, Color(pix['target'], pix['target'], pix['target']))
-                        strip_model[i]['actual'] = pix['target']
+                        brightness = pix['target']
+                    else:
+                        elapsed_time = now - transition['start_time']
+                        progress = elapsed_time / transition['duration']
+                        brightness = pytweening.easeInOutSine(progress) * (transition['end_brightness'] - transition['start_brightness']) + transition['start_brightness']
+                    
+                    strip.setPixelColor(i, Color(int(brightness), int(brightness), int(brightness)))
+                    strip_model[i]['actual'] = int(brightness)
+                    
+            else:
+                strip.setPixelColor(i, Color(pix['target'], pix['target'], pix['target']))
+                strip_model[i]['actual'] = pix['target']
 
             updated_any = True
         if updated_any:
@@ -197,13 +153,15 @@ def controller_thread_fn():
     global strip_model, sensor_dist
  
     blackout()
+    #transition_pixel(3, 255)
     while True:
         for i, pix in enumerate(strip_model):
             transition_pixel(i, 120)
-            time.sleep(0.1)
+            time.sleep(0.02)
             # transition_pixel(i-1, 120)
             # transition_pixel(i+1, 120)
             # time.sleep(1)
+        time.sleep(2)
         blackout()
         time.sleep(1)
  
