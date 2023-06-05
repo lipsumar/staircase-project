@@ -31,36 +31,30 @@ def blackout():
 def all_color(strip, color):
     for i in range(strip.numPixels()):
         strip.setPixelColor(i, color)
-    strip.show()
-
- 
-def transition_pixel_old(idx, val):
-    global strip_model
-    start_brightness = strip_model[idx][1]  # Initial brightness
-    end_brightness = val #100  # Target brightness
-    duration = 0.1  # Transition duration in seconds
- 
-    start_time = time.time()
-    end_time = start_time + duration
- 
-    while time.time() < end_time:
-        elapsed_time = time.time() - start_time
-        progress = elapsed_time / duration
-        brightness = pytweening.easeInOutSine(progress) * (end_brightness - start_brightness) + start_brightness
- 
-        strip_model[idx][0] = int(brightness)
-        time.sleep(0.05)  # Delay between updates
- 
-    strip_model[idx][0] = end_brightness  # Ensure the final brightness is set
+    strip.show() 
 
 def transition_pixel(idx, target):
     global strip_model
+
+    if idx < 0 or idx >= len(strip_model):
+        return
+
     strip_model[idx]['target'] = target
     strip_model[idx]['transition'] = {
         'duration': 0.5,
     }
 
- 
+def lightup_segment(start, end, target):
+    global strip_model
+    for i in range(start, end):
+        transition_pixel(i, target)
+
+def lightup_segment_from_center(center, length, target):
+    global strip_model
+    start = center - length // 2
+    end = center + length // 2
+    lightup_segment(start, end, target)
+
 # Create NeoPixel object with appropriate configuration.
 strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
 # Intialize the library (must be called once before other functions).
@@ -143,12 +137,10 @@ def strip_thread_fn():
  
 def controller_thread_fn():
     global strip_model, sensor_dist
-    
-    
  
     def on_detect(pin):
         led_id = random.randint(1,50)
-        transition_pixel(led_id, 120)
+        lightup_segment_from_center(led_id, 3, 120)
         
         
     GPIO.add_event_detect(SENSOR_PIN , GPIO.FALLING, callback=on_detect)
