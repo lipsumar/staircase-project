@@ -233,6 +233,8 @@ def controller_thread2_fn():
 
     print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
 
+    time.sleep(1)
+
     """
     els = []
     while True:
@@ -254,6 +256,7 @@ def controller_thread2_fn():
     print(els)
     """
 
+    """
     while True:
         # print('sync pulse')
         GPIO.setup(WIRE_PIN, GPIO.OUT)
@@ -292,6 +295,7 @@ def controller_thread2_fn():
             if time_since_sync_end_mic > 80:
                 break
         print(loops, 'loops', pulses)
+    """
 
 
 if __name__ == '__main__':
