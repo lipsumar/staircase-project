@@ -248,6 +248,7 @@ def controller_thread2_fn():
 
             if mic_since_pulse_end > 100:
                 break
+        print(pulses)
 
         time.sleep(1)
 
