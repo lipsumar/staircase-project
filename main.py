@@ -212,15 +212,41 @@ def controller_thread2_fn():
     elapsed_time_sec = time.perf_counter() - start_time
     # Calculate elapsed time in microseconds
     elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
-
+    GPIO.setup(WIRE_PIN, GPIO.OUT)
+    
+    """
+    els = []
     while True:
-        print('sync pulse')
+        elapsed_milli = (time.perf_counter() - start_time)*1_000_000
+        #print(elapsed_milli)
+        els.append(elapsed_milli)
+        
+        #if(len(els)==3):
+        #    GPIO.output(WIRE_PIN, GPIO.HIGH)
+        #if(len(els)==4):
+        #    GPIO.output(WIRE_PIN, GPIO.LOW)
+        if(len(els)==3):
+            i = GPIO.input(WIRE_PIN)
+        if(len(els)==5):
+            i = GPIO.input(WIRE_PIN)
+        
+        if(len(els)>20):
+            break;
+    print(els)
+    """
+    
+    while True:
+        #print('sync pulse')
         GPIO.setup(WIRE_PIN, GPIO.OUT)
+        sync_pulse_start_at = time.perf_counter()
         # emit sync signal of 25 microseconds
         GPIO.output(WIRE_PIN, GPIO.HIGH)
-        time.sleep(0.000025)
+        time.sleep(0.0000025)
         GPIO.output(WIRE_PIN, GPIO.LOW)
         sync_pulse_end_at = time.perf_counter()
+        
+        pulse_length_mic = (sync_pulse_end_at - sync_pulse_start_at)*1_000_000
+        print('pulse_length_mic', pulse_length_mic)
 
         # set wire to input
         GPIO.setup(WIRE_PIN, GPIO.IN)
@@ -228,13 +254,17 @@ def controller_thread2_fn():
         # wait for 10 microseconds
         time.sleep(0.00001)
 
+        loops = 0
+        pulses = []
         while True:
+            loops+=1
             time_since_sync_end_mic = (
                 time.perf_counter() - sync_pulse_end_at) * 1_000_000
+            
             # read wire pin
             if GPIO.input(WIRE_PIN) == GPIO.HIGH:
-
-                print('pulse after', time_since_sync_end_mic)
+                #print('pulse after', time_since_sync_end_mic)
+                pulses.append(time_since_sync_end_mic)
 
             # wait for 1 microsecond
             time.sleep(0.000001)
@@ -242,6 +272,7 @@ def controller_thread2_fn():
             # exit 80 microseconds after sync pulse
             if time_since_sync_end_mic > 80:
                 break
+        print(loops, 'loops', pulses)
 
 
 if __name__ == '__main__':
