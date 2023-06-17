@@ -214,26 +214,28 @@ def controller_thread2_fn():
     sync_pulse_started_at = None
     sync_pulse_ended_at = None
 
-    # sync pulse
     while True:
-        elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
 
-        # send sync pulse
-        if not sync_pulse_started:
-            sync_pulse_started_at = elapsed_time_mic
-            GPIO.output(WIRE_PIN, GPIO.HIGH)
-            sync_pulse_started = True
-            continue
+        # sync pulse
+        while True:
+            elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
 
-        # sync pulse is over
-        if elapsed_time_mic - sync_pulse_started_at > 25:
-            sync_pulse_ended_at = elapsed_time_mic
-            GPIO.output(WIRE_PIN, GPIO.LOW)
-            break
+            # send sync pulse
+            if not sync_pulse_started:
+                sync_pulse_started_at = elapsed_time_mic
+                GPIO.output(WIRE_PIN, GPIO.HIGH)
+                sync_pulse_started = True
+                continue
 
-    print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
+            # sync pulse is over
+            if elapsed_time_mic - sync_pulse_started_at > 25:
+                sync_pulse_ended_at = elapsed_time_mic
+                GPIO.output(WIRE_PIN, GPIO.LOW)
+                break
 
-    time.sleep(1)
+        print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
+
+        time.sleep(1)
 
     """
     els = []
