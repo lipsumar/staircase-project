@@ -238,7 +238,9 @@ def controller_thread2_fn():
         # read bus
         GPIO.setup(WIRE_PIN, GPIO.IN)
         pulses = []
+        loops = 0
         while True:
+            loops += 1
             mic_since_pulse_end = (
                 time.perf_counter() - start_time) * 1_000_000 - sync_pulse_ended_at
 
@@ -248,7 +250,7 @@ def controller_thread2_fn():
 
             if mic_since_pulse_end > 100:
                 break
-        print(pulses)
+        print(loops, pulses)
 
         time.sleep(1)
 
