@@ -233,7 +233,7 @@ def controller_thread2_fn():
                 GPIO.output(WIRE_PIN, GPIO.LOW)
                 break
 
-        print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
+        # print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
 
         # read bus
         GPIO.setup(WIRE_PIN, GPIO.IN)
