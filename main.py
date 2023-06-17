@@ -207,14 +207,14 @@ def controller_thread_fn():
 def controller_thread2_fn():
     blackout()
 
-    GPIO.setup(WIRE_PIN, GPIO.OUT)
-
-    start_time = time.perf_counter()
-    sync_pulse_started = False
-    sync_pulse_started_at = None
-    sync_pulse_ended_at = None
-
     while True:
+
+        GPIO.setup(WIRE_PIN, GPIO.OUT)
+
+        start_time = time.perf_counter()
+        sync_pulse_started = False
+        sync_pulse_started_at = None
+        sync_pulse_ended_at = None
 
         # sync pulse
         while True:
