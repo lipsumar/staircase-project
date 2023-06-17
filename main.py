@@ -9,6 +9,7 @@ import pytweening
 SENSOR_PIN = 23 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(SENSOR_PIN, GPIO.IN)
+GPIO.setup(24, GPIO.IN)
  
 #### ledstrip config
 LED_COUNT = 50        # Number of LED pixels.
@@ -35,7 +36,7 @@ def all_color(strip, color):
 
 def transition_pixel(idx, target, duration=0.5, delay=0.0, next=None):
     global strip_model
-
+    
     if idx < 0 or idx >= len(strip_model):
         return
 
@@ -60,11 +61,11 @@ def lightup_segment_from_center(center, length, target):
     lightup_segment(start, end, target)
 
 def ripple(center, length, target):
-    off_transition = { 'target': 0 }
-    transition_pixel(center, target, next=off_transition)
+    off_transition = { 'target': 0, 'delay': 2, 'duration':0.2 }
+    transition_pixel(center, target, duration=0.2, next=off_transition)
     for i in range(1, length // 2):
-        transition_pixel(center - i, target, delay=0.1*i, next=off_transition)
-        transition_pixel(center + i, target, delay=0.1*i, next=off_transition)
+        transition_pixel(center - i, target, delay=0.1*i, duration=0.2, next=off_transition)
+        transition_pixel(center + i, target, delay=0.1*i, duration=0.2, next=off_transition)
 
 # Create NeoPixel object with appropriate configuration.
 strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
@@ -124,12 +125,16 @@ def strip_thread_fn():
                 
                 # transition is ongoing
                 if transition['start_time'] is not None:
+                    next_trans = None
                     # transition is over
                     if now > transition['end_time']:
                         if 'next' in transition:
-                            transition_pixel(i, **transition['next'])
+                            next_trans = transition['next']
                         strip_model[i]['transition'] = None
                         brightness = pix['target']
+                    elif transition['start_time'] > now:
+                        # transition not started yet
+                        continue
                     else:
                         elapsed_time = now - transition['start_time']
                         progress = elapsed_time / transition['duration']
@@ -137,6 +142,9 @@ def strip_thread_fn():
                     
                     strip.setPixelColor(i, Color(int(brightness), int(brightness), int(brightness)))
                     strip_model[i]['actual'] = int(brightness)
+                    
+                    if next_trans:
+                        transition_pixel(i, **next_trans)
                     
             else:
                 strip.setPixelColor(i, Color(pix['target'], pix['target'], pix['target']))
@@ -149,21 +157,31 @@ def strip_thread_fn():
  
     while True:
         update_strip()
+        #time.sleep(0.2)
  
 def controller_thread_fn():
     global strip_model, sensor_dist
  
     def on_detect(pin):
-        led_id = random.randint(1,50)
-        ripple(led_id, 6, 120)
+        if pin==23:
+            led_id = random.randint(1,LED_COUNT/2)
+        else:
+            led_id = random.randint(LED_COUNT/2, LED_COUNT)
+        ripple(led_id, 15, 120)
         
-    GPIO.add_event_detect(SENSOR_PIN , GPIO.FALLING, callback=on_detect)
+    #GPIO.add_event_detect(SENSOR_PIN , GPIO.RISING, callback=on_detect)
+    GPIO.add_event_detect(24 , GPIO.RISING, callback=on_detect)
      
     blackout()
+    
+    # start animation
+    for i, pix in enumerate(strip_model):
+        transition_pixel(i, 120, delay= i*0.05, duration=0.1, next={'target':0, 'delay':0.4})
+    
     #transition_pixel(3, 255)
     while True:
         #for i, pix in enumerate(strip_model):
-        #    transition_pixel(i, 120)
+        #    transition_pixel(i, 120, next={'target':0, 'delay':1})
         #    time.sleep(0.02)
         #    # transition_pixel(i-1, 120)
         #    # transition_pixel(i+1, 120)
