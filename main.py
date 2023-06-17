@@ -207,13 +207,32 @@ def controller_thread_fn():
 def controller_thread2_fn():
     blackout()
 
-    # Get the current high-resolution time in seconds
-    start_time = time.perf_counter()
-    elapsed_time_sec = time.perf_counter() - start_time
-    # Calculate elapsed time in microseconds
-    elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
     GPIO.setup(WIRE_PIN, GPIO.OUT)
-    
+
+    start_time = time.perf_counter()
+    sync_pulse_started = False
+    sync_pulse_started_at = None
+    sync_pulse_ended_at = None
+
+    # sync pulse
+    while True:
+        elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
+
+        # send sync pulse
+        if not sync_pulse_started:
+            sync_pulse_started_at = elapsed_time_mic
+            GPIO.output(WIRE_PIN, GPIO.HIGH)
+            sync_pulse_started = True
+            continue
+
+        # sync pulse is over
+        if elapsed_time_mic - sync_pulse_started_at > 25:
+            sync_pulse_ended_at = elapsed_time_mic
+            GPIO.output(WIRE_PIN, GPIO.LOW)
+            break
+
+    print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
+
     """
     els = []
     while True:
@@ -234,9 +253,9 @@ def controller_thread2_fn():
             break;
     print(els)
     """
-    
+
     while True:
-        #print('sync pulse')
+        # print('sync pulse')
         GPIO.setup(WIRE_PIN, GPIO.OUT)
         sync_pulse_start_at = time.perf_counter()
         # emit sync signal of 25 microseconds
@@ -244,7 +263,7 @@ def controller_thread2_fn():
         time.sleep(0.0000025)
         GPIO.output(WIRE_PIN, GPIO.LOW)
         sync_pulse_end_at = time.perf_counter()
-        
+
         pulse_length_mic = (sync_pulse_end_at - sync_pulse_start_at)*1_000_000
         print('pulse_length_mic', pulse_length_mic)
 
@@ -257,13 +276,13 @@ def controller_thread2_fn():
         loops = 0
         pulses = []
         while True:
-            loops+=1
+            loops += 1
             time_since_sync_end_mic = (
                 time.perf_counter() - sync_pulse_end_at) * 1_000_000
-            
+
             # read wire pin
             if GPIO.input(WIRE_PIN) == GPIO.HIGH:
-                #print('pulse after', time_since_sync_end_mic)
+                # print('pulse after', time_since_sync_end_mic)
                 pulses.append(time_since_sync_end_mic)
 
             # wait for 1 microsecond
