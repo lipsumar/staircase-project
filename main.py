@@ -6,10 +6,10 @@ import random
 import pytweening
 
 
-WIRE_PIN = 23
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(WIRE_PIN, GPIO.OUT)
-# GPIO.setup(24, GPIO.IN)
+WIRE_PIN = 18 # 18 physical is GPIO 24
+GPIO.setmode(GPIO.BOARD) # Use physical pin numbering
+GPIO.setup(WIRE_PIN, GPIO.OUT, initial=GPIO.LOW)
+
 
 # ledstrip config
 LED_COUNT = 50        # Number of LED pixels.
@@ -22,6 +22,7 @@ LED_BRIGHTNESS = 50  # Set to 0 for darkest and 255 for brightest
 LED_INVERT = False
 LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
+event = None
 
 def blackout():
     global strip_model
@@ -106,69 +107,75 @@ def debug_thread_fn():
         print(sensor_dist)
 
 
+
+
+def update_strip():
+    global strip_model, strip
+    updated_any = False
+    for i, pix in enumerate(strip_model):
+        
+        if pix['actual'] == pix['target']:
+            continue
+
+        if pix['transition'] is not None:
+            now = time.time()
+            transition = pix['transition']
+
+            # transition is brand new, initialize it
+            if 'start_time' not in transition:
+                transition['duration'] = transition['duration'] if transition['duration'] else 1.0
+                transition['start_time'] = now + transition['delay']
+                transition['end_time'] = transition['start_time'] + \
+                    transition['duration']
+                transition['start_brightness'] = pix['actual']
+                transition['end_brightness'] = pix['target']
+                strip_model[i]['transition'] = transition
+
+            # transition is ongoing
+            if transition['start_time'] is not None:
+                next_trans = None
+                # transition is over
+                if now > transition['end_time']:
+                    if 'next' in transition:
+                        next_trans = transition['next']
+                    strip_model[i]['transition'] = None
+                    brightness = pix['target']
+                elif transition['start_time'] > now:
+                    # transition not started yet
+                    continue
+                else:
+                    elapsed_time = now - transition['start_time']
+                    progress = elapsed_time / transition['duration']
+                    brightness = pytweening.easeInOutSine(
+                        progress) * (transition['end_brightness'] - transition['start_brightness']) + transition['start_brightness']
+
+                strip.setPixelColor(
+                    i, Color(int(brightness), int(brightness), int(brightness)))
+                strip_model[i]['actual'] = int(brightness)
+
+                if next_trans:
+                    transition_pixel(i, **next_trans)
+
+        else:
+            strip.setPixelColor(
+                i, Color(pix['target'], pix['target'], pix['target']))
+            strip_model[i]['actual'] = pix['target']
+
+        updated_any = True
+    if updated_any:
+        strip.show()
+        #print('update strip')
+
 # This thread is responsible to drive the lights
 # based on strip_model
 def strip_thread_fn():
-    global strip_model, strip
-
-    def update_strip():
-        updated_any = False
-        for i, pix in enumerate(strip_model):
-            if pix['actual'] == pix['target']:
-                continue
-
-            if pix['transition'] is not None:
-                now = time.time()
-                transition = pix['transition']
-
-                # transition is brand new, initialize it
-                if 'start_time' not in transition:
-                    transition['duration'] = transition['duration'] if transition['duration'] else 1.0
-                    transition['start_time'] = now + transition['delay']
-                    transition['end_time'] = transition['start_time'] + \
-                        transition['duration']
-                    transition['start_brightness'] = pix['actual']
-                    transition['end_brightness'] = pix['target']
-                    strip_model[i]['transition'] = transition
-
-                # transition is ongoing
-                if transition['start_time'] is not None:
-                    next_trans = None
-                    # transition is over
-                    if now > transition['end_time']:
-                        if 'next' in transition:
-                            next_trans = transition['next']
-                        strip_model[i]['transition'] = None
-                        brightness = pix['target']
-                    elif transition['start_time'] > now:
-                        # transition not started yet
-                        continue
-                    else:
-                        elapsed_time = now - transition['start_time']
-                        progress = elapsed_time / transition['duration']
-                        brightness = pytweening.easeInOutSine(
-                            progress) * (transition['end_brightness'] - transition['start_brightness']) + transition['start_brightness']
-
-                    strip.setPixelColor(
-                        i, Color(int(brightness), int(brightness), int(brightness)))
-                    strip_model[i]['actual'] = int(brightness)
-
-                    if next_trans:
-                        transition_pixel(i, **next_trans)
-
-            else:
-                strip.setPixelColor(
-                    i, Color(pix['target'], pix['target'], pix['target']))
-                strip_model[i]['actual'] = pix['target']
-
-            updated_any = True
-        if updated_any:
-            strip.show()
-            # print('update strip', strip_model)
 
     while True:
-        update_strip()
-        # time.sleep(0.2)
+        if event.is_set():
+            break
+        #update_strip()
+        sensor_bus()
+        #time.sleep(0.2)
 
 
 def controller_thread_fn():
@@ -204,132 +211,88 @@ def controller_thread_fn():
         time.sleep(1)
 
 
+
+def millis():
+    return int(time.perf_counter()*1000)
+
+
 def controller_thread2_fn():
     blackout()
-
+    
     while True:
+        if event.is_set():
+            break
+        sensor_bus()
+       
+rippled = False
+def sensor_bus():
+    global rippled
+    # sync pulse
+    GPIO.output(WIRE_PIN, GPIO.HIGH)
+    time.sleep(0.03)
+    GPIO.output(WIRE_PIN, GPIO.LOW)
+    read_start = millis()
 
-        GPIO.setup(WIRE_PIN, GPIO.OUT)
+    # switch to input
+    GPIO.setup(WIRE_PIN, GPIO.IN)
+    
+    phase_duration = 0
+    wire_val = GPIO.LOW
+    prev_wire_val = GPIO.LOW
+    signal_start = -1
+    signals = []
+    iters = 0
+    while phase_duration < 150:
+        update_strip()
+        phase_duration = millis() - read_start
+        wire_val = GPIO.input(WIRE_PIN)
 
-        start_time = time.perf_counter()
-        sync_pulse_started = False
-        sync_pulse_started_at = None
-        sync_pulse_ended_at = None
+        if prev_wire_val==GPIO.LOW and wire_val==GPIO.HIGH:
+            # RISING
+            signal_start = phase_duration
+        if prev_wire_val==GPIO.HIGH and wire_val==GPIO.LOW:
+            # FALLING
+            if signal_start==-1:
+                print('false fall', iters)
+            signals.append({"start": signal_start, "end": phase_duration})
+            signal_start = -1
 
-        # sync pulse
-        while True:
-            elapsed_time_mic = (time.perf_counter() - start_time) * 1_000_000
+        prev_wire_val = wire_val
+        phase_duration = millis() - read_start
+        iters+=1
+    print('signals:', iters, signals)
+    GPIO.setup(WIRE_PIN, GPIO.OUT, initial=GPIO.LOW)
+    sensors_state = get_sensors_state(signals)
+    if sensors_state[1] and not rippled:
+        rippled=True
+        print('ripple')
+        ripple(20, 15, 120)
 
-            # send sync pulse
-            if not sync_pulse_started:
-                sync_pulse_started_at = elapsed_time_mic
-                GPIO.output(WIRE_PIN, GPIO.HIGH)
-                sync_pulse_started = True
-                continue
-
-            # sync pulse is over
-            if elapsed_time_mic - sync_pulse_started_at > 25:
-                sync_pulse_ended_at = elapsed_time_mic
-                GPIO.output(WIRE_PIN, GPIO.LOW)
-                break
-
-        # print('sync pulse length', sync_pulse_ended_at - sync_pulse_started_at)
-
-        # read bus
-        GPIO.setup(WIRE_PIN, GPIO.IN)
-        pulses = []
-        loops = 0
-        while True:
-            loops += 1
-            mic_since_pulse_end = (
-                time.perf_counter() - start_time) * 1_000_000 - sync_pulse_ended_at
-
-            # read bus
-            if GPIO.input(WIRE_PIN) == GPIO.HIGH:
-                pulses.append(mic_since_pulse_end)
-
-            if mic_since_pulse_end > 100:
-                break
-        print(loops, pulses)
-
-        time.sleep(1)
-
-    """
-    els = []
-    while True:
-        elapsed_milli = (time.perf_counter() - start_time)*1_000_000
-        #print(elapsed_milli)
-        els.append(elapsed_milli)
-        
-        #if(len(els)==3):
-        #    GPIO.output(WIRE_PIN, GPIO.HIGH)
-        #if(len(els)==4):
-        #    GPIO.output(WIRE_PIN, GPIO.LOW)
-        if(len(els)==3):
-            i = GPIO.input(WIRE_PIN)
-        if(len(els)==5):
-            i = GPIO.input(WIRE_PIN)
-        
-        if(len(els)>20):
-            break;
-    print(els)
-    """
-
-    """
-    while True:
-        # print('sync pulse')
-        GPIO.setup(WIRE_PIN, GPIO.OUT)
-        sync_pulse_start_at = time.perf_counter()
-        # emit sync signal of 25 microseconds
-        GPIO.output(WIRE_PIN, GPIO.HIGH)
-        time.sleep(0.0000025)
-        GPIO.output(WIRE_PIN, GPIO.LOW)
-        sync_pulse_end_at = time.perf_counter()
-
-        pulse_length_mic = (sync_pulse_end_at - sync_pulse_start_at)*1_000_000
-        print('pulse_length_mic', pulse_length_mic)
-
-        # set wire to input
-        GPIO.setup(WIRE_PIN, GPIO.IN)
-
-        # wait for 10 microseconds
-        time.sleep(0.00001)
-
-        loops = 0
-        pulses = []
-        while True:
-            loops += 1
-            time_since_sync_end_mic = (
-                time.perf_counter() - sync_pulse_end_at) * 1_000_000
-
-            # read wire pin
-            if GPIO.input(WIRE_PIN) == GPIO.HIGH:
-                # print('pulse after', time_since_sync_end_mic)
-                pulses.append(time_since_sync_end_mic)
-
-            # wait for 1 microsecond
-            time.sleep(0.000001)
-
-            # exit 80 microseconds after sync pulse
-            if time_since_sync_end_mic > 80:
-                break
-        print(loops, 'loops', pulses)
-    """
-
+def get_sensors_state(signals):
+    state = [0, 0]
+    for signal in signals:
+        if signal["end"]>0 and signal["end"]<10:
+            state[0] = 1
+        if signal["end"]>10 and signal["end"]<20:
+            state[1] = 1
+    return state
 
 if __name__ == '__main__':
-    # sensor_thread = threading.Thread(target=sensor_thread_fn)
-    debug_thread = threading.Thread(target=debug_thread_fn)
+    event = threading.Event()
+    
     strip_thread = threading.Thread(target=strip_thread_fn)
-    controller_thread = threading.Thread(target=controller_thread2_fn)
-    # sensor_thread.start()
-    # debug_thread.start()
+    #controller_thread = threading.Thread(target=controller_thread2_fn)
+    
     strip_thread.start()
-    controller_thread.start()
+    #controller_thread.start()
 
     try:
         while True:
-            time.sleep(10)
+            time.sleep(1)
     except KeyboardInterrupt:
+        event.set()
+        strip_thread.join()
+        #controller_thread.join()
         blackout()
         GPIO.cleanup()
+        print('clean exit')
